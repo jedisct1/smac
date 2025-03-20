@@ -1,7 +1,7 @@
 #define smac_MACBYTES   32
 #define smac_KEYBYTES   32
 #define smac_NONCEBYTES 15
-#define smac_BLOCKBYTES (16 * 8)
+#define smac_BLOCKBYTES (16 * 12)
 
 #include <stddef.h>
 #include <string.h>
@@ -18,6 +18,10 @@ typedef struct {
     __m128i b5;
     __m128i b6;
     __m128i b7;
+    __m128i b8;
+    __m128i b9;
+    __m128i ba;
+    __m128i bb;
 } aes_block_t;
 
 static inline __m128i
@@ -32,7 +36,8 @@ AES_BLOCK_XOR(const aes_block_t a, const aes_block_t b)
     return (aes_block_t) {
         _mm_xor_si128(a.b0, b.b0), _mm_xor_si128(a.b1, b.b1), _mm_xor_si128(a.b2, b.b2),
         _mm_xor_si128(a.b3, b.b3), _mm_xor_si128(a.b4, b.b4), _mm_xor_si128(a.b5, b.b5),
-        _mm_xor_si128(a.b6, b.b6), _mm_xor_si128(a.b7, b.b7),
+        _mm_xor_si128(a.b6, b.b6), _mm_xor_si128(a.b7, b.b7), _mm_xor_si128(a.b8, b.b8),
+        _mm_xor_si128(a.b9, b.b9), _mm_xor_si128(a.ba, b.ba), _mm_xor_si128(a.bb, b.bb),
     };
 }
 
@@ -48,6 +53,10 @@ AES_BLOCK_LOAD(const uint8_t *a)
         _mm_loadu_si128((const __m128i *) (const void *) (a + 80)),
         _mm_loadu_si128((const __m128i *) (const void *) (a + 96)),
         _mm_loadu_si128((const __m128i *) (const void *) (a + 112)),
+        _mm_loadu_si128((const __m128i *) (const void *) (a + 128)),
+        _mm_loadu_si128((const __m128i *) (const void *) (a + 144)),
+        _mm_loadu_si128((const __m128i *) (const void *) (a + 160)),
+        _mm_loadu_si128((const __m128i *) (const void *) (a + 176)),
     };
 }
 
@@ -55,14 +64,14 @@ static inline aes_block_t
 AES_BLOCK_LOAD_BROADCAST(const uint8_t *a)
 {
     const __m128i x = _mm_loadu_si128((const __m128i *) (const void *) a);
-    return (aes_block_t) { x, x, x, x, x, x, x, x };
+    return (aes_block_t) { x, x, x, x, x, x, x, x, x, x, x, x };
 }
 
 static inline aes_block_t
 AES_BLOCK_LOAD_64x2(uint64_t a, uint64_t b)
 {
     const __m128i t = _mm_set_epi64x((long long) a, (long long) b);
-    return (aes_block_t) { t, t, t, t, t, t, t, t };
+    return (aes_block_t) { t, t, t, t, t, t, t, t, t, t, t, t };
 }
 
 static inline void
@@ -76,6 +85,10 @@ AES_BLOCK_STORE(uint8_t *a, const aes_block_t b)
     _mm_storeu_si128((__m128i *) (void *) (a + 80), b.b5);
     _mm_storeu_si128((__m128i *) (void *) (a + 96), b.b6);
     _mm_storeu_si128((__m128i *) (void *) (a + 112), b.b7);
+    _mm_storeu_si128((__m128i *) (void *) (a + 128), b.b8);
+    _mm_storeu_si128((__m128i *) (void *) (a + 144), b.b9);
+    _mm_storeu_si128((__m128i *) (void *) (a + 160), b.ba);
+    _mm_storeu_si128((__m128i *) (void *) (a + 176), b.bb);
 }
 
 static inline void
@@ -90,17 +103,19 @@ AES_ENC(const aes_block_t a, const aes_block_t b)
     return (aes_block_t) {
         _mm_aesenc_si128(a.b0, b.b0), _mm_aesenc_si128(a.b1, b.b1), _mm_aesenc_si128(a.b2, b.b2),
         _mm_aesenc_si128(a.b3, b.b3), _mm_aesenc_si128(a.b4, b.b4), _mm_aesenc_si128(a.b5, b.b5),
-        _mm_aesenc_si128(a.b6, b.b6), _mm_aesenc_si128(a.b7, b.b7),
+        _mm_aesenc_si128(a.b6, b.b6), _mm_aesenc_si128(a.b7, b.b7), _mm_aesenc_si128(a.b8, b.b8),
+        _mm_aesenc_si128(a.b9, b.b9), _mm_aesenc_si128(a.ba, b.ba), _mm_aesenc_si128(a.bb, b.bb),
     };
 }
 
 #define P(A) \
     _mm_shuffle_epi8(A, _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9))
 
-#define PERMUTE(a)                                                             \
-    (aes_block_t)                                                              \
-    {                                                                          \
-        P(a.b0), P(a.b1), P(a.b2), P(a.b3), P(a.b4), P(a.b5), P(a.b6), P(a.b7) \
+#define PERMUTE(a)                                                                                \
+    (aes_block_t)                                                                                 \
+    {                                                                                             \
+        P(a.b0), P(a.b1), P(a.b2), P(a.b3), P(a.b4), P(a.b5), P(a.b6), P(a.b7), P(a.b8), P(a.b9), \
+            P(a.ba), P(a.bb)                                                                      \
     }
 
 #define COMPRESS(state, m)                                                                         \
@@ -186,6 +201,10 @@ smac(uint8_t tag[smac_MACBYTES], const uint8_t *ad, const size_t ad_len, const u
     state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b5);
     state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b6);
     state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b7);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b8);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b9);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.ba);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.bb);
 
     s0 = state;
     m  = AES_BLOCK_LOAD_64x2(0, 1);

@@ -74,17 +74,13 @@ AES_ENC(const aes_block_t a, const aes_block_t b)
                            _mm_aesenc_si128(a.b2, b.b2), _mm_aesenc_si128(a.b3, b.b3) };
 }
 
-#define PERMUTE(a)                                                                                 \
-    (aes_block_t)                                                                                  \
-    {                                                                                              \
-        _mm_shuffle_epi8((a.b0),                                                                   \
-                         _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9)),     \
-            _mm_shuffle_epi8((a.b1),                                                               \
-                             _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9)), \
-            _mm_shuffle_epi8((a.b2),                                                               \
-                             _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9)), \
-            _mm_shuffle_epi8((a.b3),                                                               \
-                             _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9))  \
+#define P(A) \
+    _mm_shuffle_epi8(A, _mm_setr_epi8(0, 7, 14, 11, 4, 13, 10, 1, 8, 15, 6, 3, 12, 5, 2, 9))
+
+#define PERMUTE(a)                         \
+    (aes_block_t)                          \
+    {                                      \
+        P(a.b0), P(a.b1), P(a.b2), P(a.b3) \
     }
 
 #define COMPRESS(state, m)                                                                         \
@@ -108,7 +104,7 @@ smac(uint8_t tag[smac_MACBYTES], const uint8_t *ad, const size_t ad_len, const u
     aes_block_t m;
     size_t      i, left;
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < sizeof nonce_patched / (smac_NONCEBYTES + 1); i++) {
         memcpy(nonce_patched + i * (smac_NONCEBYTES + 1), nonce, smac_NONCEBYTES);
         nonce_patched[i * (smac_NONCEBYTES + 1) + smac_NONCEBYTES] = i | (4 << 4);
     }
@@ -163,7 +159,9 @@ smac(uint8_t tag[smac_MACBYTES], const uint8_t *ad, const size_t ad_len, const u
     m = AES_BLOCK_LOAD_64x2(ct_len * 8, ad_len * 8);
     COMPRESS(state, m);
 
-    state.a1.b0 = AES_BLOCK_XOR1(AES_BLOCK_XOR1(state.a1.b1, state.a1.b2), state.a1.b3);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b1);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b2);
+    state.a1.b0 = AES_BLOCK_XOR1(state.a1.b0, state.a1.b3);
 
     s0 = state;
     m  = AES_BLOCK_LOAD_64x2(0, 1);
